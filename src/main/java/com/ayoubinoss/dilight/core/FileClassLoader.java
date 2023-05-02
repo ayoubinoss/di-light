@@ -62,7 +62,7 @@ public class FileClassLoader {
             for (Path path : pathList) {
                 String fullyQualifiedName = path.toString()
                         .substring(root.length() + 1)
-                        .replaceAll("/", ".");
+                        .replaceAll("[/\\\\]", ".");
 
                 fullyQualifiedName = fullyQualifiedName.substring(0, fullyQualifiedName.length() - 6); // remove ".class" from the end of the name
 

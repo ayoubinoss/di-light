@@ -19,8 +19,9 @@ import java.util.stream.Stream;
  */
 public class Container {
 
+    // singleton registry
     private static Map<Class<?>, Object> registry;
-    private static Container instance = null;
+    private static Container instance;
 
     private Container() {
         registry = new HashMap<>();
