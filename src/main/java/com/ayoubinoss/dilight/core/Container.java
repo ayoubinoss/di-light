@@ -3,6 +3,7 @@ package com.ayoubinoss.dilight.core;
 
 import com.ayoubinoss.dilight.annotations.Component;
 import com.ayoubinoss.dilight.annotations.Inject;
+import com.ayoubinoss.dilight.exceptions.ContainerException;
 
 import java.lang.reflect.Field;
 import java.nio.file.Files;
@@ -11,6 +12,8 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 
@@ -19,23 +22,26 @@ import java.util.stream.Stream;
  */
 public class Container {
 
-    // singleton registry
-    private static Map<Class<?>, Object> registry;
+    private static final Logger LOGGER = Logger.getLogger(Container.class.getName());
+
+    private static final Map<Class<?>, Object> registry = new HashMap<>();
+
     private static Container instance;
 
     private Container() {
-        registry = new HashMap<>();
         try {
             discover();
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("could not start discovery " + e.getMessage());
+        } catch (Exception exception) {
+            LOGGER.log(Level.SEVERE, "could not start discovery error message : [{0}]", exception.getMessage());
+            throw new ContainerException("could not start discovery " + exception.getMessage(), exception);
         }
     }
 
     public static Container boot() {
-        if (instance == null)
+        if (instance == null) {
             instance = new Container();
+        }
+
         return instance;
     }
 
@@ -47,7 +53,8 @@ public class Container {
                 .findFirst();
 
         if (path.isEmpty()) {
-            throw new RuntimeException("the class path does not exist!");
+            LOGGER.log(Level.SEVERE, "the class path does not exist!");
+            throw new ContainerException("the class path does not exist!");
         }
 
         FileClassLoader classLoader = new FileClassLoader.FileClassLoaderBuilder().with(path.get()).build();
@@ -57,8 +64,8 @@ public class Container {
                 .forEach(clazz -> {
                     try {
                         register(clazz);
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                    } catch (Exception exception) {
+                        LOGGER.log(Level.SEVERE, "could not register class : [{0}] error message : [{1}]", new Object[]{clazz.getName(), exception.getMessage()});
                     }
                 });
     }
@@ -67,14 +74,14 @@ public class Container {
 
         Class<?> objectClass = object.getClass();
 
-        for (Field f : objectClass.getDeclaredFields()) {
-            if (f.isAnnotationPresent(Inject.class)) {
-                Class<?> fieldClass = f.getType();
+        for (Field field : objectClass.getDeclaredFields()) {
+            if (field.isAnnotationPresent(Inject.class)) {
+                Class<?> fieldClass = field.getType();
                 if (!registry.containsKey(fieldClass)) {
                     register(fieldClass);
                 }
-                f.setAccessible(true);
-                f.set(object, registry.get(fieldClass));
+                field.setAccessible(true);
+                field.set(object, registry.get(fieldClass));
             }
         }
     }
@@ -97,18 +104,15 @@ public class Container {
             registerClass(clazz);
         }
 
-        for (Field f : fields) {
-            if (f.isAnnotationPresent(Inject.class)) {
-                if (!registry.containsKey(f.getType())) {
-                    registerClass(f.getType());
-                }
+        for (Field field : fields) {
+            if (field.isAnnotationPresent(Inject.class) && !registry.containsKey(field.getType())) {
+                registerClass(field.getType());
             }
         }
-
     }
 
     /**
-     * register the given class and add it's dependencies
+     * register the given class and add its dependencies
      *
      * @param clazz the target class
      * @throws Exception in case of exception, the calling method should be able to handle that

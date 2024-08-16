@@ -1,5 +1,7 @@
 package com.ayoubinoss.dilight.core;
 
+import com.ayoubinoss.dilight.exceptions.FileClassLoaderException;
+
 import java.net.URI;
 
 import java.net.URL;
@@ -9,6 +11,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -17,22 +21,25 @@ import java.util.stream.Stream;
  */
 public class FileClassLoader {
 
-    private List<Path> paths;
+    private static final Logger LOGGER = Logger.getLogger(FileClassLoader.class.getName());
+
+    private List<Path> paths = new ArrayList<>();
 
     private FileClassLoader() {
-        paths = new ArrayList<>();
+        // empty constructor.
     }
 
     /**
      * load classes from the default class path
      *
      * @return A Stream of Class objects representing the loaded classes.
-     * @throws RuntimeException if the default class path does not contain a directory.
+     * @throws FileClassLoaderException if the default class path does not contain a directory.
      */
     public Stream<Class<?>> load() {
         Optional<Path> defaultDirectory = paths.stream().findFirst();
         if (defaultDirectory.isEmpty()) {
-            throw new RuntimeException("The default class path does not contain a directory");
+            LOGGER.log(Level.SEVERE, "The default class path does not contain a directory");
+            throw new FileClassLoaderException("The default class path does not contain a directory");
         }
 
         return load(defaultDirectory.get());
@@ -47,13 +54,14 @@ public class FileClassLoader {
      */
     public Stream<Class<?>> load(Path dirPath) {
         URI uri = dirPath.toUri();
-        try {
+        Stream<Path> pathStream = null;
+        try (URLClassLoader classLoader = new URLClassLoader(new URL[]{uri.toURL()})) {
 
-            URL url = uri.toURL();
             String root = dirPath.toString();
-            URLClassLoader classLoader = new URLClassLoader(new URL[]{url});
 
-            List<Path> pathList = Files.walk(dirPath)
+            pathStream = Files.walk(dirPath);
+
+            List<Path> pathList = pathStream
                     .filter(e -> !Files.isDirectory(e))
                     .collect(Collectors.toList());
 
@@ -66,21 +74,29 @@ public class FileClassLoader {
 
                 fullyQualifiedName = fullyQualifiedName.substring(0, fullyQualifiedName.length() - 6); // remove ".class" from the end of the name
 
-                try {
-                    Class<?> clazz = classLoader.loadClass(fullyQualifiedName);
-                    if (clazz != null) {
-                        classes.add(clazz);
-                    }
-                } catch (Exception e) {
-                    continue; // tolerate the exception
-                }
+                loadClass(classLoader, fullyQualifiedName, classes);
             }
 
             return classes.stream();
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Exception exception) {
+            LOGGER.log(Level.SEVERE, "an error occurred while loading classes", exception);
+        } finally {
+            if (pathStream != null) {
+                pathStream.close();
+            }
         }
         return null;
+    }
+
+    private void loadClass(URLClassLoader classLoader, String fullyQualifiedName, List<Class<?>> classes) {
+        try {
+            Class<?> clazz = classLoader.loadClass(fullyQualifiedName);
+            if (clazz != null) {
+                classes.add(clazz);
+            }
+        } catch (ClassNotFoundException exception) {
+            LOGGER.log(Level.WARNING, "cannot load class with name: {}", fullyQualifiedName);
+        }
     }
 
     /**
