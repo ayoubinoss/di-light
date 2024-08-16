@@ -12,7 +12,7 @@ public class Main {
         Container.register(Test.class);
         Test a = (Test) Container.resolve(Test.class);
         a.setValue(12);
-        System.out.println(a.getValue());
-
+        a.setTestDependencyValue(10);
+        System.out.println(a.getValue() + ", " + a.getTestDependencyValue());
     }
 }
